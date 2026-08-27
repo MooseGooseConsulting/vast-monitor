@@ -15,10 +15,13 @@ Normal monitor startup never migrates the raw PostgreSQL schema. The extension
 archives exact response bytes only; it does not normalize offers or conduct
 market/pricing analysis. Its health is at `/api/extensions/raw-market/health`.
 
-The maintained local deployment contract is [`compose.yml`](compose.yml). The
-database service is in the `raw-market-db` Compose profile; provision its
-writer role before running the owner migration, then pass only the writer DSN
-as `DATABASE_URL` to the monitor.
+The maintained local deployment contract is [`compose.yml`](compose.yml). It
+connects the monitor to an externally provisioned PostgreSQL archive so an
+existing raw history can be retained. Before the owner-only migration, create
+the least-privilege writer login once with
+`psql -v writer_password='...' -f scripts/bootstrap-raw-market-roles.sql`.
+Pass only that writer DSN to the monitor, preferably through
+`DATABASE_URL_FILE`; do not put it in the image or a tracked Compose file.
 
 ## Features
 

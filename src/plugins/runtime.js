@@ -2,7 +2,7 @@
 export async function startPluginRuntime({ plugins = [], context = {}, logger = console } = {}) {
   const entries = [];
   for (const plugin of plugins) {
-    const entry = { plugin, started: false, instance: null, error: null };
+    const entry = { plugin, started: typeof plugin.start !== "function", instance: null, error: null };
     entries.push(entry);
     if (typeof plugin.start !== "function") continue;
     try {
@@ -16,6 +16,7 @@ export async function startPluginRuntime({ plugins = [], context = {}, logger = 
 
   return {
     entries,
+    activePlugins() { return entries.filter((entry) => !entry.error).map((entry) => entry.plugin); },
     async stop(reason = "shutdown") {
       await Promise.all(entries.map(async (entry) => {
         if (!entry.started || typeof entry.plugin.stop !== "function") return;

@@ -8,17 +8,8 @@ services:
     environment:
       RAW_ARCHIVE_ENABLED: "false"
       PLUGIN_MODULES: ""
+      VAST_API_KEY_PATH: /run/secrets/vast-api-key
+      DB_PATH: /data/vast-monitor.db
     volumes:
-      - ./data:/app/data
+      - ./data:/data
       - /run/secrets/vast-api-key:/run/secrets/vast-api-key:ro
-  vast-market-raw-postgres:
-    image: postgres:16
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: vast_market
-      POSTGRES_USER: vast_market_owner
-      POSTGRES_PASSWORD: change-me
-    volumes:
-      - vast-market-postgres:/var/lib/postgresql/data
-volumes:
-  vast-market-postgres:

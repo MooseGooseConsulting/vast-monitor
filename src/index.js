@@ -43,18 +43,20 @@ export async function startApp(options = {}) {
     config: runtimeConfig,
     db,
     alertManager,
-    plugins,
+    plugins: [],
     platformMetricsClient
   });
   const pluginRuntime = options.pluginRuntime || await startPluginRuntime({
     plugins,
     context: { config: runtimeConfig, db, monitor },
   });
+  const activePlugins = pluginRuntime.activePlugins?.() || plugins;
+  monitor.plugins = activePlugins;
   const app = options.app || createServer({
     config: runtimeConfig,
     db,
     monitor,
-    plugins,
+    plugins: activePlugins,
     pluginRuntime,
     platformMetricsClient
   });
@@ -81,16 +83,18 @@ export async function startApp(options = {}) {
   for (const signal of ["SIGINT", "SIGTERM"]) {
     process.on(signal, () => {
       console.log(`[shutdown] Received ${signal}, stopping monitor`);
-      Promise.resolve(pluginRuntime.stop(signal)).finally(() => {
-        monitor.stop();
-        server.close(() => {
-        process.exit(0);
-        });
-      });
+      monitor.stop();
+      server.close(() => {});
+      void stopWithDeadline(pluginRuntime, signal).finally(() => process.exit(0));
     });
   }
 
   return { config: runtimeConfig, db, plugins, pluginRuntime, alertManager, monitor, platformMetricsClient, app, server };
+}
+
+async function stopWithDeadline(pluginRuntime, signal) {
+  const deadline = new Promise((resolve) => setTimeout(resolve, 10_000));
+  await Promise.race([Promise.resolve(pluginRuntime.stop(signal)), deadline]);
 }
 
 function formatDatabaseMaintenanceSummary(summary = {}) {

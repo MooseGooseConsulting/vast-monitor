@@ -9,8 +9,9 @@ if (!url) throw new Error("OWNER_DATABASE_URL is required for raw-market migrati
 const client = new Client({ connectionString: url });
 await client.connect();
 try {
+  await client.query("SELECT pg_advisory_lock(hashtext('vast-monitor-raw-market-migrations'))");
   await client.query("CREATE TABLE IF NOT EXISTS raw_market_schema_migration (version integer PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT clock_timestamp())");
-  const migrations = [1];
+  const migrations = [1, 2];
   for (const version of migrations) {
     const prior = await client.query("SELECT 1 FROM raw_market_schema_migration WHERE version=$1", [version]);
     if (prior.rowCount) continue;
@@ -20,4 +21,7 @@ try {
     catch (error) { await client.query("ROLLBACK"); throw error; }
     console.log(`applied raw-market migration ${version}`);
   }
-} finally { await client.end(); }
+} finally {
+  await client.query("SELECT pg_advisory_unlock(hashtext('vast-monitor-raw-market-migrations'))").catch(() => {});
+  await client.end();
+}

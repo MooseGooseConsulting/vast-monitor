@@ -9,7 +9,7 @@ services:
     env_file: .env
     environment:
       PORT: "3000"
-      VAST_API_KEY_PATH: ${VAST_API_KEY_PATH:-/home/node/.config/vastai/vast_api_key}
+      VAST_API_KEY_PATH: /run/secrets/vast-api-key
       VAST_CLI_PATH: /usr/local/bin/vast
       DB_PATH: ${DB_PATH:-/data/vast-monitor.db}
       RAW_ARCHIVE_ENABLED: ${RAW_ARCHIVE_ENABLED:-false}
@@ -18,7 +18,7 @@ services:
       DATABASE_URL_FILE: ${DATABASE_URL_FILE:-}
     volumes:
       - ${VAST_MONITOR_DATA_DIR:-./data}:/data
-      - ${VAST_API_KEY_HOST_PATH:-./secrets/vast_api_key}:${VAST_API_KEY_PATH:-/home/node/.config/vastai/vast_api_key}:ro
+      - ${VAST_API_KEY_HOST_PATH:?set an absolute host path to the Vast API key}:/run/secrets/vast-api-key:ro
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/api/health"]
       interval: 30s

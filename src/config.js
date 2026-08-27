@@ -73,10 +73,28 @@ export function validateRuntimeConfig(runtimeConfig) {
     issues.push(apiKeyStatus.message);
   }
 
+  issues.push(...validateRawArchiveSettings(runtimeConfig));
+
   return {
     ok: issues.length === 0,
     issues
   };
+}
+
+export function validateRawArchiveSettings(runtimeConfig) {
+  if (!runtimeConfig.rawArchiveEnabled) return [];
+  const issues = [];
+  if (runtimeConfig.rawArchivePollIntervalMs !== 300_000) {
+    issues.push("RAW_ARCHIVE_POLL_INTERVAL_MS must be exactly 300000");
+  }
+  if (!isTimerSafePositiveInteger(runtimeConfig.rawArchiveRequestTimeoutMs)) {
+    issues.push("RAW_ARCHIVE_REQUEST_TIMEOUT_MS must be a positive timer-safe integer");
+  }
+  return issues;
+}
+
+function isTimerSafePositiveInteger(value) {
+  return Number.isSafeInteger(value) && value > 0 && value <= 2_147_483_647;
 }
 
 export function getLiveDependencyHealth(runtimeConfig) {

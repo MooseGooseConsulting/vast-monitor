@@ -31,7 +31,8 @@ CREATE INDEX IF NOT EXISTS raw_response_document_observed_at_idx ON raw_response
 CREATE INDEX IF NOT EXISTS raw_response_document_group_observed_at_idx ON raw_response_document(query_group, observed_at);
 GRANT USAGE ON SCHEMA public TO vast_market_writer;
 REVOKE DELETE, TRUNCATE, REFERENCES, TRIGGER ON raw_collection_run FROM vast_market_writer;
-GRANT SELECT, INSERT, UPDATE ON raw_collection_run TO vast_market_writer;
+GRANT SELECT, INSERT ON raw_collection_run TO vast_market_writer;
+GRANT UPDATE (status, completed_at, poll_duration_ms, error_code, error_message) ON raw_collection_run TO vast_market_writer;
 REVOKE UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON raw_response_document FROM vast_market_writer;
 GRANT SELECT, INSERT ON raw_response_document TO vast_market_writer;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO vast_market_writer;
+GRANT USAGE, SELECT ON SEQUENCE raw_collection_run_id_seq, raw_response_document_id_seq TO vast_market_writer;
