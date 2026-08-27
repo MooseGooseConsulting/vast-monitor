@@ -51,6 +51,7 @@ export const config = {
   pluginModules: listFromEnv("PLUGIN_MODULES"),
   rawArchiveEnabled: String(process.env.RAW_ARCHIVE_ENABLED || "").toLowerCase() === "true",
   rawArchiveDatabaseUrl: String(process.env.DATABASE_URL || "").trim(),
+  rawArchiveDatabaseUrlFile: String(process.env.DATABASE_URL_FILE || "").trim(),
   rawArchivePollIntervalMs: numberFromEnv("RAW_ARCHIVE_POLL_INTERVAL_MS", 5 * 60 * 1000),
   rawArchiveRequestTimeoutMs: numberFromEnv("RAW_ARCHIVE_REQUEST_TIMEOUT_MS", 60 * 1000),
   rawArchiveOffersUrl: process.env.VAST_OFFERS_URL || "https://console.vast.ai/api/v0/bundles/",

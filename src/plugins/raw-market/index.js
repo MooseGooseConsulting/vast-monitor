@@ -71,11 +71,11 @@ class RawMarketArchive {
 
   async start() {
     if (!this.config.rawArchiveEnabled) return this;
-    if (!this.config.rawArchiveDatabaseUrl) throw new Error("DATABASE_URL is required when RAW_ARCHIVE_ENABLED=true");
-    this.pool = new Pool({ connectionString: this.config.rawArchiveDatabaseUrl });
+    const databaseUrl = this.config.rawArchiveDatabaseUrl || await readSecret(this.config.rawArchiveDatabaseUrlFile, "DATABASE_URL is required when RAW_ARCHIVE_ENABLED=true");
+    this.pool = new Pool({ connectionString: databaseUrl });
     this.health = { ...this.health, status: "starting" };
-    // An extension outage must not delay the community dashboard listener.
-    void this.poll();
+    // Begin only at the next aligned slot so cutover never creates an
+    // off-cadence second writer.
     const delay = alignedDelay(this.config.rawArchivePollIntervalMs);
     this.timer = setTimeout(() => {
       void this.poll();
@@ -149,6 +149,7 @@ class RawMarketArchive {
 
 function sha256(value) { return crypto.createHash("sha256").update(value).digest("hex"); }
 async function readApiKey(file) { const { readFile } = await import("node:fs/promises"); const key = (await readFile(file, "utf8")).trim(); if (!key) throw new Error("empty_api_key_file"); return key; }
+async function readSecret(file, missingMessage) { if (!file) throw new Error(missingMessage); const { readFile } = await import("node:fs/promises"); const value = (await readFile(file, "utf8")).trim(); if (!value) throw new Error(missingMessage); return value; }
 function alignedDelay(interval) { const remainder = Date.now() % interval; return remainder === 0 ? interval : interval - remainder; }
 
 let archive;
