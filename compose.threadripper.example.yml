@@ -1,0 +1,20 @@
+# Site override for the existing Threadripper deployment.  It deliberately
+# keeps the current SQLite history and external PostgreSQL archive in place.
+services:
+  vast-monitor:
+    image: ${VAST_MONITOR_IMAGE:?set an immutable ghcr.io digest}
+    volumes:
+      - ${VAST_MONITOR_DATA_DIR:?set the existing SQLite data directory}:/data
+      - ${VAST_API_KEY_HOST_PATH:?set the Vast API-key path}:/run/secrets/vast-api-key:ro
+      - ${DATABASE_URL_HOST_PATH:?set the writer-DSN secret path}:/run/secrets/vast-market-writer-dsn:ro
+    environment:
+      DATABASE_URL: ""
+      DATABASE_URL_FILE: /run/secrets/vast-market-writer-dsn
+    networks:
+      - default
+      - raw-market
+
+networks:
+  raw-market:
+    external: true
+    name: ${RAW_ARCHIVE_DOCKER_NETWORK:-vast-market-raw_default}

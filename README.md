@@ -23,6 +23,13 @@ the least-privilege writer login once with
 Pass only that writer DSN to the monitor, preferably through
 `DATABASE_URL_FILE`; do not put it in the image or a tracked Compose file.
 
+For the existing Threadripper deployment, use
+[`compose.threadripper.example.yml`](compose.threadripper.example.yml) as the
+site override. It deliberately bind-mounts the existing SQLite directory and
+writer-DSN secret, rather than creating a new history volume. Release images
+are published by GitHub Actions and the workflow summary prints the immutable
+`VAST_MONITOR_IMAGE=ghcr.io/...@sha256:...` value to use for that override.
+
 ## Features
 
 - Polls `vast show machines --raw` on a schedule

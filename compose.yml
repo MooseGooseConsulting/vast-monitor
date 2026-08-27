@@ -1,7 +1,7 @@
 services:
   vast-monitor:
     build: .
-    image: ghcr.io/moosegooseconsulting/vast-monitor:local
+    image: ${VAST_MONITOR_IMAGE:-ghcr.io/moosegooseconsulting/vast-monitor:local}
     container_name: vast-monitor
     restart: unless-stopped
     user: "1000:1000"
