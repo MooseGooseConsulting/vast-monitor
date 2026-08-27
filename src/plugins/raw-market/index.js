@@ -119,7 +119,7 @@ class RawMarketArchive {
           try { catalogNames = gpuCatalogNames(catalog.body); }
           catch (error) { failures.push(`gpu_catalog_${error.constructor.name}`); }
         }
-      } catch (error) { failures.push(`gpu_catalog_${error.constructor.name}`); }
+      } catch (error) { failures.push(formatFailure("gpu_catalog", error)); }
       for (const query of queryMatrix(catalogNames)) {
         const body = offerSearchBody(query.names, query.direction);
         try {
@@ -127,7 +127,7 @@ class RawMarketArchive {
           await this.persist(runId, observedAt, "offer-search", query.group, query.direction, this.config.rawArchiveOffersUrl, body, response);
           docs++; bytes += response.body.length;
           if (response.status !== 200) failures.push(`${query.group}_${query.direction}_http_${response.status}`);
-        } catch (error) { failures.push(`${query.group}_${query.direction}_${error.constructor.name}`); }
+        } catch (error) { failures.push(formatFailure(`${query.group}_${query.direction}`, error)); }
       }
       const status = failures.length ? "failed" : "complete";
       await this.pool.query("UPDATE raw_collection_run SET status=$1, completed_at=clock_timestamp(), poll_duration_ms=$2, error_code=$3, error_message=$4 WHERE id=$5", [status, Date.now() - observedAt.getTime(), failures.length ? "collection_error" : null, failures.join(";").slice(0, 500) || null, runId]);
@@ -148,6 +148,7 @@ class RawMarketArchive {
 }
 
 function sha256(value) { return crypto.createHash("sha256").update(value).digest("hex"); }
+function formatFailure(prefix, error) { const detail = error instanceof Error ? error.message : String(error); return `${prefix}_${error?.constructor?.name || "Error"}:${detail}`.slice(0, 450); }
 async function readApiKey(file) { const { readFile } = await import("node:fs/promises"); const key = (await readFile(file, "utf8")).trim(); if (!key) throw new Error("empty_api_key_file"); return key; }
 async function readSecret(file, missingMessage) { if (!file) throw new Error(missingMessage); const { readFile } = await import("node:fs/promises"); const value = (await readFile(file, "utf8")).trim(); if (!value) throw new Error(missingMessage); return value; }
 function alignedDelay(interval) { const remainder = Date.now() % interval; return remainder === 0 ? interval : interval - remainder; }
