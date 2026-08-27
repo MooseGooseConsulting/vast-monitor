@@ -11,5 +11,8 @@ services:
       VAST_API_KEY_PATH: /run/secrets/vast-api-key
       DB_PATH: /data/vast-monitor.db
     volumes:
-      - ./data:/data
+      - vast-monitor-data:/data
       - /run/secrets/vast-api-key:/run/secrets/vast-api-key:ro
+
+volumes:
+  vast-monitor-data:

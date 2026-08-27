@@ -21,7 +21,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 COPY . ./
-RUN mkdir -p /app/data && chown -R node:node /app
+RUN mkdir -p /app/data /data && chown -R node:node /app /data
 USER node
 ENV NODE_ENV=production
 ENV VAST_CLI_PATH=/usr/local/bin/vast

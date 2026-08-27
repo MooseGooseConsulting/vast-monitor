@@ -67,6 +67,17 @@ test("requestExact rejects an aborted response rather than wedging the scheduler
   await assert.rejects(requestExact("https://example.invalid/", { apiKey: "read-only", request }), /response_aborted/);
 });
 
+test("requestExact has an absolute deadline even when no response event occurs", async () => {
+  const request = () => {
+    const req = new EventEmitter();
+    req.setTimeout = () => {};
+    req.end = () => {};
+    req.destroy = (error) => req.emit("error", error);
+    return req;
+  };
+  await assert.rejects(requestExact("https://example.invalid/", { apiKey: "read-only", timeoutMs: 5, request }), /request_deadline_5ms/);
+});
+
 test("raw archive only accepts the fixed five-minute cadence and safe request timeout", () => {
   assert.deepEqual(validateRawArchiveSettings({ rawArchiveEnabled: true, rawArchivePollIntervalMs: 0, rawArchiveRequestTimeoutMs: 0 }), ["RAW_ARCHIVE_POLL_INTERVAL_MS must be exactly 300000", "RAW_ARCHIVE_REQUEST_TIMEOUT_MS must be a positive timer-safe integer"]);
   assert.deepEqual(validateRawArchiveSettings({ rawArchiveEnabled: true, rawArchivePollIntervalMs: 300000, rawArchiveRequestTimeoutMs: 60000 }), []);

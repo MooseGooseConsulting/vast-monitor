@@ -17,7 +17,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:-}
       DATABASE_URL_FILE: ${DATABASE_URL_FILE:-}
     volumes:
-      - ${VAST_MONITOR_DATA_DIR:-./data}:/data
+      - vast-monitor-data:/data
       - ${VAST_API_KEY_HOST_PATH:?set an absolute host path to the Vast API key}:/run/secrets/vast-api-key:ro
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/api/health"]
@@ -25,3 +25,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+
+volumes:
+  vast-monitor-data:

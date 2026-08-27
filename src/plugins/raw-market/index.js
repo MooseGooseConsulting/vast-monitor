@@ -40,9 +40,11 @@ export function requestExact(urlString, { method = "GET", body = null, apiKey, t
   const url = new URL(urlString);
   return new Promise((resolve, reject) => {
     let settled = false;
+    let deadline;
     const settle = (handler, value) => {
       if (settled) return;
       settled = true;
+      clearTimeout(deadline);
       handler(value);
     };
     const req = request(url, {
@@ -56,6 +58,7 @@ export function requestExact(urlString, { method = "GET", body = null, apiKey, t
       res.once("close", () => settle(reject, new Error("response_closed_before_end")));
       res.once("end", () => settle(resolve, { status: res.statusCode || 0, headers: res.rawHeaders || [], body: Buffer.concat(chunks) }));
     });
+    deadline = setTimeout(() => req.destroy(new Error(`request_deadline_${timeoutMs}ms`)), timeoutMs);
     req.once("error", (error) => settle(reject, error));
     req.setTimeout(timeoutMs, () => req.destroy(new Error(`request_timeout_${timeoutMs}ms`)));
     if (payload) req.write(payload);
@@ -165,12 +168,21 @@ export class RawMarketArchive {
       if (catalogPersistenceFailed) throw new Error(failures.join(";"));
       for (const query of queryMatrix(catalogNames)) {
         const body = offerSearchBody(query.names, query.direction);
+        let response;
         try {
-          const response = await requestExact(this.config.rawArchiveOffersUrl, { method: "POST", body, apiKey, timeoutMs: this.config.rawArchiveRequestTimeoutMs, request: this.request });
+          response = await requestExact(this.config.rawArchiveOffersUrl, { method: "POST", body, apiKey, timeoutMs: this.config.rawArchiveRequestTimeoutMs, request: this.request });
+        } catch (error) {
+          failures.push(formatFailure(`${query.group}_${query.direction}`, error));
+          continue;
+        }
+        try {
           await this.persist(pool, runId, new Date(), "offer-search", query.group, query.direction, this.config.rawArchiveOffersUrl, body, response);
           docs++; bytes += response.body.length;
           if (response.status !== 200) failures.push(`${query.group}_${query.direction}_http_${response.status}`);
-        } catch (error) { failures.push(formatFailure(`${query.group}_${query.direction}`, error)); break; }
+        } catch (error) {
+          failures.push(formatFailure(`${query.group}_${query.direction}_persist`, error));
+          break;
+        }
       }
       const status = failures.length ? "failed" : "complete";
       await pool.query("UPDATE raw_collection_run SET status=$1, completed_at=clock_timestamp(), poll_duration_ms=$2, error_code=$3, error_message=$4 WHERE id=$5", [status, Date.now() - observedAt.getTime(), failures.length ? "collection_error" : null, failures.join(";").slice(0, 500) || null, runId]);
