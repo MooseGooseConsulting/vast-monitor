@@ -21,6 +21,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 COPY . ./
+USER node
 ENV NODE_ENV=production
 ENV VAST_CLI_PATH=/usr/local/bin/vast
 EXPOSE 3000
