@@ -1,0 +1,24 @@
+services:
+  vast-monitor:
+    build: .
+    image: ghcr.io/moosegooseconsulting/vast-monitor:local
+    restart: unless-stopped
+    ports: ["3010:3000"]
+    env_file: .env
+    environment:
+      RAW_ARCHIVE_ENABLED: "false"
+      PLUGIN_MODULES: ""
+    volumes:
+      - ./data:/app/data
+      - /run/secrets/vast-api-key:/run/secrets/vast-api-key:ro
+  vast-market-raw-postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: vast_market
+      POSTGRES_USER: vast_market_owner
+      POSTGRES_PASSWORD: change-me
+    volumes:
+      - vast-market-postgres:/var/lib/postgresql/data
+volumes:
+  vast-market-postgres:

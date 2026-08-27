@@ -3,7 +3,7 @@ import { createDatabase } from "./db.js";
 import { AlertManager } from "./alerts/alert-manager.js";
 import { ConsoleAlertChannel } from "./alerts/console-alert-channel.js";
 import { FleetMonitor } from "./monitor.js";
-import { loadPlugins } from "./plugins/index.js";
+import { loadPlugins, startPluginRuntime } from "./plugins/index.js";
 import { createPlatformMetricsClient } from "./platform-metrics.js";
 import { createServer } from "./server.js";
 
@@ -46,11 +46,16 @@ export async function startApp(options = {}) {
     plugins,
     platformMetricsClient
   });
+  const pluginRuntime = options.pluginRuntime || await startPluginRuntime({
+    plugins,
+    context: { config: runtimeConfig, db, monitor },
+  });
   const app = options.app || createServer({
     config: runtimeConfig,
     db,
     monitor,
     plugins,
+    pluginRuntime,
     platformMetricsClient
   });
 
@@ -76,14 +81,16 @@ export async function startApp(options = {}) {
   for (const signal of ["SIGINT", "SIGTERM"]) {
     process.on(signal, () => {
       console.log(`[shutdown] Received ${signal}, stopping monitor`);
-      monitor.stop();
-      server.close(() => {
+      Promise.resolve(pluginRuntime.stop(signal)).finally(() => {
+        monitor.stop();
+        server.close(() => {
         process.exit(0);
+        });
       });
     });
   }
 
-  return { config: runtimeConfig, db, plugins, alertManager, monitor, platformMetricsClient, app, server };
+  return { config: runtimeConfig, db, plugins, pluginRuntime, alertManager, monitor, platformMetricsClient, app, server };
 }
 
 function formatDatabaseMaintenanceSummary(summary = {}) {

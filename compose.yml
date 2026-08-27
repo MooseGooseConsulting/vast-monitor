@@ -1,0 +1,26 @@
+services:
+  vast-monitor:
+    build: .
+    image: ghcr.io/moosegooseconsulting/vast-monitor:local
+    restart: unless-stopped
+    ports: ["${VAST_MONITOR_PORT:-3010}:3000"]
+    env_file: .env
+    environment:
+      RAW_ARCHIVE_ENABLED: ${RAW_ARCHIVE_ENABLED:-false}
+      PLUGIN_MODULES: ${PLUGIN_MODULES:-}
+      DATABASE_URL: ${DATABASE_URL:-}
+    volumes:
+      - ./data:/app/data
+      - ${VAST_API_KEY_HOST_PATH:-/run/secrets/vast-api-key}:${VAST_API_KEY_PATH:-/run/secrets/vast-api-key}:ro
+  vast-market-raw-postgres:
+    image: postgres:16
+    restart: unless-stopped
+    profiles: ["raw-market-db"]
+    environment:
+      POSTGRES_DB: ${RAW_MARKET_POSTGRES_DB:-vast_market}
+      POSTGRES_USER: ${RAW_MARKET_POSTGRES_OWNER:-vast_market_owner}
+      POSTGRES_PASSWORD: ${RAW_MARKET_POSTGRES_OWNER_PASSWORD:?set RAW_MARKET_POSTGRES_OWNER_PASSWORD}
+    volumes:
+      - vast-market-postgres:/var/lib/postgresql/data
+volumes:
+  vast-market-postgres:

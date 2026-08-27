@@ -11,7 +11,7 @@ import {
 import { getClientExtensionManifest, resolvePluginPublicDir } from "./plugins/index.js";
 import { fetchMachineEarnings, fetchMachineReports } from "./vast-client.js";
 
-export function createServer({ config, db, monitor, plugins = [], adminActionScheduler, platformMetricsClient } = {}) {
+export function createServer({ config, db, monitor, plugins = [], pluginRuntime, adminActionScheduler, platformMetricsClient } = {}) {
   const app = express();
   const routeMetrics = createRouteMetricsStore();
   const queueAdminAction = createAdminActionQueue({
@@ -28,7 +28,7 @@ export function createServer({ config, db, monitor, plugins = [], adminActionSch
   }));
 
   app.get("/api/health", routeMetrics.wrap("health", async (_req, res) => {
-    const health = await buildHealthResponse({ config, db, monitor, routeMetrics, platformMetricsClient });
+    const health = await buildHealthResponse({ config, db, monitor, routeMetrics, platformMetricsClient, pluginRuntime });
     res.status(health.ok ? 200 : 503).json(health);
   }));
 
@@ -407,6 +407,12 @@ export function createServer({ config, db, monitor, plugins = [], adminActionSch
     });
   }));
 
+  app.get("/api/extensions/raw-market/health", routeMetrics.wrap("raw_market_health", async (_req, res) => {
+    const all = await pluginRuntime?.getHealth?.() || {};
+    const health = all["raw-market"] || { ok: true, status: "disabled" };
+    res.status(health.ok ? 200 : 503).json(health);
+  }));
+
   app.get("/", (_req, res) => {
     res.sendFile(path.join(config.projectRoot, "public/index.html"));
   });
@@ -697,7 +703,7 @@ async function getPlatformMetricsSnapshot(platformMetricsClient) {
   }
 }
 
-async function buildHealthResponse({ config, db, monitor, routeMetrics, platformMetricsClient }) {
+async function buildHealthResponse({ config, db, monitor, routeMetrics, platformMetricsClient, pluginRuntime }) {
   const latestPollAt = db.getCurrentFleetStatus().latestPollAt;
   const status = buildHealthStatus({
     latestPollAt,
@@ -707,6 +713,7 @@ async function buildHealthResponse({ config, db, monitor, routeMetrics, platform
   const liveDependencies = getLiveDependencyHealth(config);
   const liveOperationsOk = Object.values(liveDependencies).every((dependency) => dependency.ok);
   const platformBenchmark = await getPlatformMetricsSnapshot(platformMetricsClient);
+  const extensions = await pluginRuntime?.getHealth?.() || {};
 
   return {
     ok: !status.isStale,
@@ -726,6 +733,7 @@ async function buildHealthResponse({ config, db, monitor, routeMetrics, platform
     },
     observability: normalizeMonitorObservability(monitorHealth),
     endpoint_timings: routeMetrics?.snapshot?.() || {},
+    extensions,
     ...monitorHealth
   };
 }

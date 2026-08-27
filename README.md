@@ -4,6 +4,22 @@
 
 It polls your hosted machines from Vast, enriches them with datacenter metadata, stores current state and history in SQLite, emits alerts, and serves a lightweight dashboard over Express.
 
+## Raw market archive extension
+
+This fork contains an optional append-only PostgreSQL raw-response archive. It is
+off by default. Enable it only with both `RAW_ARCHIVE_ENABLED=true` and
+`PLUGIN_MODULES=src/plugins/raw-market/index.js`, plus a writer `DATABASE_URL`
+and `VAST_API_KEY_PATH`. Before enabling it, apply the explicit owner-only,
+non-destructive migration: `OWNER_DATABASE_URL=... node scripts/migrate-raw-market.js`.
+Normal monitor startup never migrates the raw PostgreSQL schema. The extension
+archives exact response bytes only; it does not normalize offers or conduct
+market/pricing analysis. Its health is at `/api/extensions/raw-market/health`.
+
+The maintained local deployment contract is [`compose.yml`](compose.yml). The
+database service is in the `raw-market-db` Compose profile; provision its
+writer role before running the owner migration, then pass only the writer DSN
+as `DATABASE_URL` to the monitor.
+
 ## Features
 
 - Polls `vast show machines --raw` on a schedule
