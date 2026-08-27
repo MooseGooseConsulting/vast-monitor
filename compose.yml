@@ -1,0 +1,30 @@
+services:
+  vast-monitor:
+    build: .
+    image: ${VAST_MONITOR_IMAGE:-ghcr.io/moosegooseconsulting/vast-monitor:local}
+    container_name: vast-monitor
+    restart: unless-stopped
+    user: "1000:1000"
+    ports: ["127.0.0.1:${VAST_MONITOR_PORT:-3010}:3000"]
+    env_file: .env
+    environment:
+      PORT: "3000"
+      VAST_API_KEY_PATH: /run/secrets/vast-api-key
+      VAST_CLI_PATH: /usr/local/bin/vast
+      DB_PATH: ${DB_PATH:-/data/vast-monitor.db}
+      RAW_ARCHIVE_ENABLED: ${RAW_ARCHIVE_ENABLED:-false}
+      PLUGIN_MODULES: ${PLUGIN_MODULES:-}
+      DATABASE_URL: ${DATABASE_URL:-}
+      DATABASE_URL_FILE: ${DATABASE_URL_FILE:-}
+    volumes:
+      - vast-monitor-data:/data
+      - ${VAST_API_KEY_HOST_PATH:?set an absolute host path to the Vast API key}:/run/secrets/vast-api-key:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  vast-monitor-data:

@@ -1,0 +1,54 @@
+name: test and publish
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: raw_market_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres -d raw_market_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+        ports: [5432:5432]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm test
+        env:
+          RAW_MARKET_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/raw_market_test
+      - run: docker build -t vast-monitor:test .
+
+  publish:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/moosegooseconsulting/vast-monitor:sha-${{ github.sha }}
+      - run: echo "VAST_MONITOR_IMAGE=ghcr.io/moosegooseconsulting/vast-monitor@${{ steps.build.outputs.digest }}" >> "$GITHUB_STEP_SUMMARY"

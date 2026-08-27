@@ -4,6 +4,32 @@
 
 It polls your hosted machines from Vast, enriches them with datacenter metadata, stores current state and history in SQLite, emits alerts, and serves a lightweight dashboard over Express.
 
+## Raw market archive extension
+
+This fork contains an optional append-only PostgreSQL raw-response archive. It is
+off by default. Enable it only with both `RAW_ARCHIVE_ENABLED=true` and
+`PLUGIN_MODULES=src/plugins/raw-market/index.js`, plus a writer `DATABASE_URL`
+and `VAST_API_KEY_PATH`. Before enabling it, apply the explicit owner-only,
+non-destructive migration: `OWNER_DATABASE_URL=... node scripts/migrate-raw-market.js`.
+Normal monitor startup never migrates the raw PostgreSQL schema. The extension
+archives exact response bytes only; it does not normalize offers or conduct
+market/pricing analysis. Its health is at `/api/extensions/raw-market/health`.
+
+The maintained local deployment contract is [`compose.yml`](compose.yml). It
+connects the monitor to an externally provisioned PostgreSQL archive so an
+existing raw history can be retained. Before the owner-only migration, create
+the least-privilege writer login once with
+`psql -v writer_password='...' -f scripts/bootstrap-raw-market-roles.sql`.
+Pass only that writer DSN to the monitor, preferably through
+`DATABASE_URL_FILE`; do not put it in the image or a tracked Compose file.
+
+For the existing Threadripper deployment, use
+[`compose.threadripper.example.yml`](compose.threadripper.example.yml) as the
+site override. It deliberately bind-mounts the existing SQLite directory and
+writer-DSN secret, rather than creating a new history volume. Release images
+are published by GitHub Actions and the workflow summary prints the immutable
+`VAST_MONITOR_IMAGE=ghcr.io/...@sha256:...` value to use for that override.
+
 ## Features
 
 - Polls `vast show machines --raw` on a schedule

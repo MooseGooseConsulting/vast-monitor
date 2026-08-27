@@ -3,7 +3,7 @@ import { createDatabase } from "./db.js";
 import { AlertManager } from "./alerts/alert-manager.js";
 import { ConsoleAlertChannel } from "./alerts/console-alert-channel.js";
 import { FleetMonitor } from "./monitor.js";
-import { loadPlugins } from "./plugins/index.js";
+import { loadPlugins, startPluginRuntime } from "./plugins/index.js";
 import { createPlatformMetricsClient } from "./platform-metrics.js";
 import { createServer } from "./server.js";
 
@@ -43,14 +43,21 @@ export async function startApp(options = {}) {
     config: runtimeConfig,
     db,
     alertManager,
-    plugins,
+    plugins: [],
     platformMetricsClient
   });
+  const pluginRuntime = options.pluginRuntime || await startPluginRuntime({
+    plugins,
+    context: { config: runtimeConfig, db, monitor },
+  });
+  const activePlugins = pluginRuntime.activePlugins?.() || plugins;
+  monitor.plugins = activePlugins;
   const app = options.app || createServer({
     config: runtimeConfig,
     db,
     monitor,
-    plugins,
+    plugins: activePlugins,
+    pluginRuntime,
     platformMetricsClient
   });
 
@@ -77,13 +84,17 @@ export async function startApp(options = {}) {
     process.on(signal, () => {
       console.log(`[shutdown] Received ${signal}, stopping monitor`);
       monitor.stop();
-      server.close(() => {
-        process.exit(0);
-      });
+      server.close(() => {});
+      void stopWithDeadline(pluginRuntime, signal).finally(() => process.exit(0));
     });
   }
 
-  return { config: runtimeConfig, db, plugins, alertManager, monitor, platformMetricsClient, app, server };
+  return { config: runtimeConfig, db, plugins, pluginRuntime, alertManager, monitor, platformMetricsClient, app, server };
+}
+
+async function stopWithDeadline(pluginRuntime, signal) {
+  const deadline = new Promise((resolve) => setTimeout(resolve, 10_000));
+  await Promise.race([Promise.resolve(pluginRuntime.stop(signal)), deadline]);
 }
 
 function formatDatabaseMaintenanceSummary(summary = {}) {

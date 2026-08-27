@@ -6,11 +6,13 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "test": "node --test"
+    "test": "node --test",
+    "migrate:raw-market": "node scripts/migrate-raw-market.js"
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0",
     "dotenv": "^16.6.1",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "pg": "^8.13.1"
   }
 }

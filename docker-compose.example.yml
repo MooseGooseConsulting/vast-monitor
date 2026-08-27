@@ -1,0 +1,18 @@
+services:
+  vast-monitor:
+    build: .
+    image: ghcr.io/moosegooseconsulting/vast-monitor:local
+    restart: unless-stopped
+    ports: ["3010:3000"]
+    env_file: .env
+    environment:
+      RAW_ARCHIVE_ENABLED: "false"
+      PLUGIN_MODULES: ""
+      VAST_API_KEY_PATH: /run/secrets/vast-api-key
+      DB_PATH: /data/vast-monitor.db
+    volumes:
+      - vast-monitor-data:/data
+      - /run/secrets/vast-api-key:/run/secrets/vast-api-key:ro
+
+volumes:
+  vast-monitor-data:

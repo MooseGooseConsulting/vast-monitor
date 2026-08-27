@@ -49,6 +49,13 @@ export const config = {
   dbAlertRetentionDays: numberFromEnv("DB_ALERT_RETENTION_DAYS", 0),
   dbEventRetentionDays: numberFromEnv("DB_EVENT_RETENTION_DAYS", 0),
   pluginModules: listFromEnv("PLUGIN_MODULES"),
+  rawArchiveEnabled: String(process.env.RAW_ARCHIVE_ENABLED || "").toLowerCase() === "true",
+  rawArchiveDatabaseUrl: String(process.env.DATABASE_URL || "").trim(),
+  rawArchiveDatabaseUrlFile: String(process.env.DATABASE_URL_FILE || "").trim(),
+  rawArchivePollIntervalMs: numberFromEnv("RAW_ARCHIVE_POLL_INTERVAL_MS", 5 * 60 * 1000),
+  rawArchiveRequestTimeoutMs: numberFromEnv("RAW_ARCHIVE_REQUEST_TIMEOUT_MS", 60 * 1000),
+  rawArchiveOffersUrl: process.env.VAST_OFFERS_URL || "https://console.vast.ai/api/v0/bundles/",
+  rawArchiveGpuCatalogUrl: process.env.VAST_GPU_CATALOG_URL || "https://console.vast.ai/api/v0/gpu_names/unique/",
   dbPath: process.env.DB_PATH ? path.resolve(projectRoot, process.env.DB_PATH) : path.resolve(projectRoot, "data/vast-monitor.db")
 };
 
@@ -66,10 +73,28 @@ export function validateRuntimeConfig(runtimeConfig) {
     issues.push(apiKeyStatus.message);
   }
 
+  issues.push(...validateRawArchiveSettings(runtimeConfig));
+
   return {
     ok: issues.length === 0,
     issues
   };
+}
+
+export function validateRawArchiveSettings(runtimeConfig) {
+  if (!runtimeConfig.rawArchiveEnabled) return [];
+  const issues = [];
+  if (runtimeConfig.rawArchivePollIntervalMs !== 300_000) {
+    issues.push("RAW_ARCHIVE_POLL_INTERVAL_MS must be exactly 300000");
+  }
+  if (!isTimerSafePositiveInteger(runtimeConfig.rawArchiveRequestTimeoutMs)) {
+    issues.push("RAW_ARCHIVE_REQUEST_TIMEOUT_MS must be a positive timer-safe integer");
+  }
+  return issues;
+}
+
+function isTimerSafePositiveInteger(value) {
+  return Number.isSafeInteger(value) && value > 0 && value <= 2_147_483_647;
 }
 
 export function getLiveDependencyHealth(runtimeConfig) {
