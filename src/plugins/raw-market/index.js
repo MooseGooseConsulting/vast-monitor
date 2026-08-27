@@ -143,7 +143,7 @@ class RawMarketArchive {
     const headers = headersToPairs(response.headers);
     const contentType = headers.find((pair) => pair.name.toLowerCase() === "content-type")?.value || "";
     const metadata = { method: requestBody ? "POST" : "GET", url: requestUrl, body_sha256: requestBody ? sha256(requestBody) : null, body_bytes: requestBody?.length || 0 };
-    await this.pool.query(`INSERT INTO raw_response_document (run_id,observed_at,request_kind,query_group,sort_direction,request_metadata,request_body,http_status,response_headers,response_content_type,response_sha256,response_bytes,response_body) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`, [runId, observedAt, requestKind, queryGroup, direction, metadata, requestBody, response.status, headers, contentType, sha256(response.body), response.body.length, response.body]);
+    await this.pool.query(`INSERT INTO raw_response_document (run_id,observed_at,request_kind,query_group,sort_direction,request_metadata,request_body,http_status,response_headers,response_content_type,response_sha256,response_bytes,response_body) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`, [runId, observedAt, requestKind, queryGroup, direction, JSON.stringify(metadata), requestBody, response.status, JSON.stringify(headers), contentType, sha256(response.body), response.body.length, response.body]);
   }
 }
 
