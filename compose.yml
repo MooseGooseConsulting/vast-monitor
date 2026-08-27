@@ -10,17 +10,5 @@ services:
       PLUGIN_MODULES: ${PLUGIN_MODULES:-}
       DATABASE_URL: ${DATABASE_URL:-}
     volumes:
-      - ./data:/app/data
+      - ${VAST_MONITOR_DATA_DIR:-./data}:/app/data
       - ${VAST_API_KEY_HOST_PATH:-/run/secrets/vast-api-key}:${VAST_API_KEY_PATH:-/run/secrets/vast-api-key}:ro
-  vast-market-raw-postgres:
-    image: postgres:16
-    restart: unless-stopped
-    profiles: ["raw-market-db"]
-    environment:
-      POSTGRES_DB: ${RAW_MARKET_POSTGRES_DB:-vast_market}
-      POSTGRES_USER: ${RAW_MARKET_POSTGRES_OWNER:-vast_market_owner}
-      POSTGRES_PASSWORD: ${RAW_MARKET_POSTGRES_OWNER_PASSWORD:?set RAW_MARKET_POSTGRES_OWNER_PASSWORD}
-    volumes:
-      - vast-market-postgres:/var/lib/postgresql/data
-volumes:
-  vast-market-postgres:

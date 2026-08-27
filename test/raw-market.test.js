@@ -20,6 +20,15 @@ test("catalog parsing is the only raw response parsing", () => {
   assert.throws(() => gpuCatalogNames(Buffer.from('{"offers":[]}')), /unexpected_gpu_catalog_shape/);
 });
 
+test("catalog failure still leaves the six static raw-market requests available", () => {
+  const fallback = queryMatrix(null);
+  assert.deepEqual(fallback.map(({ group, direction }) => [group, direction]), [
+    ["rtx-pro-6000-ws", "asc"], ["rtx-pro-6000-ws", "desc"],
+    ["rtx-pro-6000-s", "asc"], ["rtx-pro-6000-s", "desc"],
+    ["named-high-end", "asc"], ["named-high-end", "desc"]
+  ]);
+});
+
 test("plugin runtime isolates optional extension startup and health errors", async () => {
   const runtime = await startPluginRuntime({ plugins: [{ name: "broken", async start() { throw new Error("db unavailable"); } }], logger: { error() {} } });
   assert.deepEqual(await runtime.getHealth(), { broken: { ok: false, status: "degraded", error: "db unavailable" } });

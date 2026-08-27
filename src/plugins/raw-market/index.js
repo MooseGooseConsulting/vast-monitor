@@ -35,7 +35,7 @@ export function gpuCatalogNames(raw) {
   return names;
 }
 
-export function requestExact(urlString, { method = "GET", body = null, apiKey, request = https.request } = {}) {
+export function requestExact(urlString, { method = "GET", body = null, apiKey, timeoutMs = 60_000, request = https.request } = {}) {
   const payload = body == null ? null : Buffer.from(body);
   const url = new URL(urlString);
   return new Promise((resolve, reject) => {
@@ -48,6 +48,7 @@ export function requestExact(urlString, { method = "GET", body = null, apiKey, r
       res.on("end", () => resolve({ status: res.statusCode || 0, headers: res.rawHeaders || [], body: Buffer.concat(chunks) }));
     });
     req.once("error", reject);
+    req.setTimeout(timeoutMs, () => req.destroy(new Error(`request_timeout_${timeoutMs}ms`)));
     if (payload) req.write(payload);
     req.end();
   });
@@ -73,12 +74,15 @@ class RawMarketArchive {
     if (!this.config.rawArchiveDatabaseUrl) throw new Error("DATABASE_URL is required when RAW_ARCHIVE_ENABLED=true");
     this.pool = new Pool({ connectionString: this.config.rawArchiveDatabaseUrl });
     this.health = { ...this.health, status: "starting" };
-    await this.poll();
+    // An extension outage must not delay the community dashboard listener.
+    void this.poll();
     const delay = alignedDelay(this.config.rawArchivePollIntervalMs);
-    setTimeout(() => {
-      this.poll();
-      this.timer = setInterval(() => this.poll(), this.config.rawArchivePollIntervalMs);
-    }, delay).unref?.();
+    this.timer = setTimeout(() => {
+      void this.poll();
+      this.timer = setInterval(() => void this.poll(), this.config.rawArchivePollIntervalMs);
+      this.timer.unref?.();
+    }, delay);
+    this.timer.unref?.();
     return this;
   }
 
@@ -99,19 +103,27 @@ class RawMarketArchive {
     this.health = { ...this.health, status: "running", ok: true, last_attempt_at: observedAt.toISOString(), last_error: null };
     let runId;
     try {
+      await this.pool.query("UPDATE raw_collection_run SET status='failed', completed_at=clock_timestamp(), error_code='stale_running_run', error_message='raw market extension restarted before completion' WHERE collector_name=$1 AND status='running' AND started_at < clock_timestamp() - interval '10 minutes'", ["vast-monitor-raw-market"]);
       const begun = await this.pool.query("INSERT INTO raw_collection_run (collector_name, poll_slot, status) VALUES ($1,$2,'running') ON CONFLICT (collector_name,poll_slot) DO NOTHING RETURNING id", ["vast-monitor-raw-market", slot]);
       runId = begun.rows[0]?.id;
       if (!runId) { this.health = { ...this.health, status: "ok" }; return; }
       const apiKey = await readApiKey(this.config.vastApiKeyPath);
-      const catalog = await requestExact(this.config.rawArchiveGpuCatalogUrl, { apiKey });
       let docs = 0; let bytes = 0;
-      await this.persist(runId, observedAt, "gpu-catalog", "gpu-catalog", null, this.config.rawArchiveGpuCatalogUrl, null, catalog); docs++; bytes += catalog.body.length;
-      const catalogNames = catalog.status === 200 ? gpuCatalogNames(catalog.body) : null;
-      const failures = catalog.status === 200 ? [] : [`gpu_catalog_http_${catalog.status}`];
+      let catalogNames = null;
+      const failures = [];
+      try {
+        const catalog = await requestExact(this.config.rawArchiveGpuCatalogUrl, { apiKey, timeoutMs: this.config.rawArchiveRequestTimeoutMs });
+        await this.persist(runId, observedAt, "gpu-catalog", "gpu-catalog", null, this.config.rawArchiveGpuCatalogUrl, null, catalog); docs++; bytes += catalog.body.length;
+        if (catalog.status !== 200) failures.push(`gpu_catalog_http_${catalog.status}`);
+        else {
+          try { catalogNames = gpuCatalogNames(catalog.body); }
+          catch (error) { failures.push(`gpu_catalog_${error.constructor.name}`); }
+        }
+      } catch (error) { failures.push(`gpu_catalog_${error.constructor.name}`); }
       for (const query of queryMatrix(catalogNames)) {
         const body = offerSearchBody(query.names, query.direction);
         try {
-          const response = await requestExact(this.config.rawArchiveOffersUrl, { method: "POST", body, apiKey });
+          const response = await requestExact(this.config.rawArchiveOffersUrl, { method: "POST", body, apiKey, timeoutMs: this.config.rawArchiveRequestTimeoutMs });
           await this.persist(runId, observedAt, "offer-search", query.group, query.direction, this.config.rawArchiveOffersUrl, body, response);
           docs++; bytes += response.body.length;
           if (response.status !== 200) failures.push(`${query.group}_${query.direction}_http_${response.status}`);

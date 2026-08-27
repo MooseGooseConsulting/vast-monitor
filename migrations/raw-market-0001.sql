@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS raw_response_document (
 CREATE INDEX IF NOT EXISTS raw_response_document_observed_at_idx ON raw_response_document(observed_at);
 CREATE INDEX IF NOT EXISTS raw_response_document_group_observed_at_idx ON raw_response_document(query_group, observed_at);
 GRANT USAGE ON SCHEMA public TO vast_market_writer;
+REVOKE DELETE, TRUNCATE, REFERENCES, TRIGGER ON raw_collection_run FROM vast_market_writer;
 GRANT SELECT, INSERT, UPDATE ON raw_collection_run TO vast_market_writer;
+REVOKE UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON raw_response_document FROM vast_market_writer;
 GRANT SELECT, INSERT ON raw_response_document TO vast_market_writer;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO vast_market_writer;

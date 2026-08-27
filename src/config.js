@@ -52,6 +52,7 @@ export const config = {
   rawArchiveEnabled: String(process.env.RAW_ARCHIVE_ENABLED || "").toLowerCase() === "true",
   rawArchiveDatabaseUrl: String(process.env.DATABASE_URL || "").trim(),
   rawArchivePollIntervalMs: numberFromEnv("RAW_ARCHIVE_POLL_INTERVAL_MS", 5 * 60 * 1000),
+  rawArchiveRequestTimeoutMs: numberFromEnv("RAW_ARCHIVE_REQUEST_TIMEOUT_MS", 60 * 1000),
   rawArchiveOffersUrl: process.env.VAST_OFFERS_URL || "https://console.vast.ai/api/v0/bundles/",
   rawArchiveGpuCatalogUrl: process.env.VAST_GPU_CATALOG_URL || "https://console.vast.ai/api/v0/gpu_names/unique/",
   dbPath: process.env.DB_PATH ? path.resolve(projectRoot, process.env.DB_PATH) : path.resolve(projectRoot, "data/vast-monitor.db")
