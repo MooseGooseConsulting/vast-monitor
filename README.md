@@ -45,14 +45,16 @@ observations from:
   `/gpu-stats`, and `/gpu-stats/v2` feed; and
 - the authenticated account machine, instance, and earnings reads above.
 
-Apply the owner migration first with
-`OWNER_DATABASE_URL=... npm run migrate:observatory`. Runtime accepts only the writer
+Create the `vast_observatory_owner`, `vast_observatory_writer`, and
+`vast_observatory_reader` roles first; the deployment platform owns their login secrets.
+Apply the owner migration with `OWNER_DATABASE_URL=... npm run migrate:observatory`. Runtime accepts the writer
 `DATABASE_URL` or `DATABASE_URL_FILE`; the API key can be supplied as `VAST_API_KEY` or by mounting
 `VAST_API_KEY_PATH`. `npm run start:observatory -- --once` performs one immediately
 verifiable run. The collector records its source-contract version, Git revision, image
 digest, raw response hashes, source-declared counts, normalized rows, and failures in the
 fresh `vast_observatory` database. Its schemas are `ops`, `raw`, `market`, `host`, and
-`derived`.
+`derived`. Set `OCI_REVISION` and `IMAGE_DIGEST` from the deployed immutable image; a
+container cannot infer its registry digest from inside the image.
 
 ## Features
 

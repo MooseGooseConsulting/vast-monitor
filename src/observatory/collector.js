@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { normalizeEarningsDay } from "../vast-client.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -358,7 +359,7 @@ function gpuRows(parsed) {
   if (Array.isArray(parsed)) return parsed;
   if (Array.isArray(parsed?.models)) return parsed.models;
   if (parsed?.gpus && typeof parsed.gpus === "object") return Object.entries(parsed.gpus).map(([key, value]) => ({ key, value }));
-  return [];
+  throw new Error("unexpected_gpu_rollup_shape");
 }
 
 function arrayFrom(parsed, key) {
@@ -393,11 +394,20 @@ function alignedSlot(dateValue, intervalMs) {
 function sha256(value) { return crypto.createHash("sha256").update(value).digest("hex"); }
 function safeError(error) { return error instanceof Error ? error.message : String(error); }
 function text(value) { return value == null || value === "" ? null : String(value); }
-function int(value) { const parsed = Number(value); return Number.isInteger(parsed) ? parsed : null; }
-function numeric(value) { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : null; }
+function int(value) { if (missing(value)) return null; const parsed = Number(value); return Number.isInteger(parsed) ? parsed : null; }
+function numeric(value) { if (missing(value)) return null; const parsed = Number(value); return Number.isFinite(parsed) ? parsed : null; }
 function bool(value) { if (value === true || value === 1 || value === "true" || value === "1") return true; if (value === false || value === 0 || value === "false" || value === "0") return false; return null; }
 function timestamp(value) { if (value == null || value === "") return null; const parsed = typeof value === "number" || /^\d+(?:\.\d+)?$/.test(String(value)) ? new Date(Number(value) * (Number(value) < 10_000_000_000 ? 1000 : 1)) : new Date(value); return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString(); }
-function date(value) { const parsed = timestamp(value); return parsed ? parsed.slice(0, 10) : text(value)?.slice(0, 10) ?? null; }
-function earningsTotal(row) { return numeric(row.total ?? row.total_earn ?? row.earnings) ?? [row.gpu_earn ?? row.total_gpu, row.sto_earn ?? row.total_stor, row.bwu_earn ?? row.total_bwu, row.bwd_earn ?? row.total_bwd, row.sla_earn ?? row.total_sla].reduce((sum, value) => sum + (numeric(value) || 0), 0); }
+export function normalizeEarningsDate(value) { return normalizeEarningsDay(value)?.slice(0, 10) ?? null; }
+function date(value) { return normalizeEarningsDate(value); }
+function earningsTotal(row) {
+  const explicit = numeric(row.total ?? row.total_earn ?? row.earnings);
+  if (explicit !== null) return explicit;
+  const components = [row.gpu_earn ?? row.total_gpu, row.sto_earn ?? row.total_stor, row.bwu_earn ?? row.total_bwu, row.bwd_earn ?? row.total_bwd, row.sla_earn ?? row.total_sla]
+    .map(numeric)
+    .filter((value) => value !== null);
+  return components.length ? components.reduce((sum, value) => sum + value, 0) : null;
+}
+function missing(value) { return value == null || (typeof value === "string" && value.trim() === ""); }
 function rentalType(row) { if (bool(row.is_bid) === true || String(row.type || row.rental_type || "").toLowerCase() === "bid") return "bid"; if (bool(row.is_reserved) === true || String(row.type || row.rental_type || "").toLowerCase() === "reserved") return "reserved"; if (["on-demand", "ondemand", "on_demand"].includes(String(row.type || row.rental_type || "").toLowerCase())) return "on_demand"; return "unknown"; }
 function isPlainObject(value) { return value !== null && typeof value === "object" && !Buffer.isBuffer(value) && !(value instanceof Date); }

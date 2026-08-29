@@ -8,6 +8,7 @@ import {
   fetchSource,
   normalizeAccountInstance,
   normalizeAccountMachine,
+  normalizeEarningsDate,
   normalizeOffer,
   runCliSource,
   sourceContractSummary
@@ -84,6 +85,13 @@ test("normalizers preserve source payloads while exposing query fields", () => {
   assert.equal(normalizedInstance[1], 9);
   assert.equal(normalizedInstance[10], "bid");
   assert.equal(normalizedInstance.at(-1), instance);
+
+  const missingOffer = normalizeOffer({ machine_id: null, host_id: "", num_gpus: null, dph_total: "" });
+  assert.equal(missingOffer[1], null);
+  assert.equal(missingOffer[2], null);
+  assert.equal(missingOffer[6], null);
+  assert.equal(missingOffer[12], null);
+  assert.equal(normalizeEarningsDate(20_000), "2024-10-04");
 });
 
 test("current rental views use the latest complete account documents and surface host counter disagreement", () => {
@@ -123,6 +131,21 @@ test("normalization batches roll back atomically when a later batch fails", asyn
   assert.equal(statements.includes("COMMIT"), false);
   assert.equal(statements.at(-2), "ROLLBACK");
   assert.equal(statements.at(-1), "RELEASE");
+});
+
+test("unrecognized GPU metric payloads fail normalization instead of producing empty success", async () => {
+  const statements = [];
+  const client = {
+    async query(sql) { statements.push(sql); return { rowCount: 1 }; },
+    release() {}
+  };
+  const collector = new ObservatoryCollector({}, { pool: { async connect() { return client; } } });
+  await assert.rejects(
+    collector.normalizeDocument(1, { name: "gpu-metrics", normalizer: "gpu-rollup" }, Buffer.from('{"error":"schema changed"}'), new Date()),
+    /unexpected_gpu_rollup_shape/
+  );
+  assert.equal(statements.includes("ROLLBACK"), true);
+  assert.equal(statements.includes("COMMIT"), false);
 });
 
 test("a complete collection stores every raw source and normalized surface", async () => {
