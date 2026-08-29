@@ -44,6 +44,7 @@ jobs:
       - run: npm test
         env:
           RAW_MARKET_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/raw_market_test
+          OBSERVATORY_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/raw_market_test
       - run: >-
           docker build
           --build-arg OCI_REVISION=${{ github.sha }}

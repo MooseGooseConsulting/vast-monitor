@@ -30,7 +30,7 @@ test("observatory source contract contains the complete public feeds and read-on
     ["show", "earnings"]
   ]);
   const serialized = JSON.stringify(sourceContractSummary(new Date("2026-08-29T12:00:00Z")));
-  for (const forbidden of ["create", "destroy", "start", "stop", "list machine", "unlist", "change bid", "set min-bid"]) {
+  for (const forbidden of ["create", "destroy", "start", "stop", "list machine", "unlist", "change bid", "set min-bid", "docker", "process", "environment", "network"]) {
     assert.equal(serialized.includes(forbidden), false, forbidden);
   }
 });
