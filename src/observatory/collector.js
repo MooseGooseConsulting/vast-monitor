@@ -50,7 +50,7 @@ export class ObservatoryCollector {
         this.config.contractVersion,
         this.config.collectorRevision,
         this.config.imageDigest,
-        JSON.stringify(sourceContractSummary(startedAt))
+        JSON.stringify(sourceContractSummary(startedAt, this.config.contractVersion))
       ]
     );
     const runId = run.rows[0]?.id;
@@ -69,10 +69,11 @@ export class ObservatoryCollector {
         if (response.status < 200 || response.status >= 300) {
           throw new Error(`http_${response.status}`);
         }
-        await this.normalize(documentId, source, response.body, response.observedAt);
+        await this.normalizeDocument(documentId, source, response.body, response.observedAt);
       } catch (error) {
         failures.push(await this.persistFailure(runId, source.name, error));
       }
+      if (this.config.signal?.aborted) break;
     }
 
     for (const source of accountSourceContract(startedAt)) {
@@ -81,10 +82,11 @@ export class ObservatoryCollector {
         const documentId = await this.persistDocument(runId, source, response);
         documents += 1;
         responseBytes += response.body.length;
-        await this.normalize(documentId, source, response.body, response.observedAt);
+        await this.normalizeDocument(documentId, source, response.body, response.observedAt);
       } catch (error) {
         failures.push(await this.persistFailure(runId, source.name, error));
       }
+      if (this.config.signal?.aborted) break;
     }
 
     const status = failures.length ? "failed" : "complete";
@@ -148,25 +150,39 @@ export class ObservatoryCollector {
     return `${sourceName}:${message}`;
   }
 
-  async normalize(documentId, source, body, observedAt) {
+  async normalizeDocument(documentId, source, body, observedAt) {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await this.normalize(client, documentId, source, body, observedAt);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async normalize(database, documentId, source, body, observedAt) {
     const parsed = parseJson(body, source.name);
     switch (source.normalizer) {
       case "offers":
-        return insertOfferObservations(this.pool, documentId, source.name, observedAt, arrayFrom(parsed, "offers"));
+        return insertOfferObservations(database, documentId, source.name, observedAt, arrayFrom(parsed, "offers"));
       case "machines":
-        return insertMachineObservations(this.pool, documentId, source.name, observedAt, arrayFrom(parsed, "offers"));
+        return insertMachineObservations(database, documentId, source.name, observedAt, arrayFrom(parsed, "offers"));
       case "hosts":
-        return insertHostObservations(this.pool, documentId, source.name, observedAt, arrayFrom(parsed, "hosts"));
+        return insertHostObservations(database, documentId, source.name, observedAt, arrayFrom(parsed, "hosts"));
       case "gpu-rollup":
-        return insertGpuRollups(this.pool, documentId, source.name, observedAt, gpuRows(parsed));
+        return insertGpuRollups(database, documentId, source.name, observedAt, gpuRows(parsed));
       case "gpu-catalog":
-        return insertGpuCatalog(this.pool, documentId, source.name, observedAt, arrayFrom(parsed, "gpu_names"));
+        return insertGpuCatalog(database, documentId, source.name, observedAt, arrayFrom(parsed, "gpu_names"));
       case "account-machines":
-        return insertAccountMachines(this.pool, documentId, observedAt, Array.isArray(parsed) ? parsed : arrayFrom(parsed, "machines"));
+        return insertAccountMachines(database, documentId, observedAt, Array.isArray(parsed) ? parsed : arrayFrom(parsed, "machines"));
       case "account-instances":
-        return insertAccountInstances(this.pool, documentId, observedAt, Array.isArray(parsed) ? parsed : arrayFrom(parsed, "instances"));
+        return insertAccountInstances(database, documentId, observedAt, Array.isArray(parsed) ? parsed : arrayFrom(parsed, "instances"));
       case "account-earnings":
-        return insertAccountEarnings(this.pool, documentId, observedAt, parsed);
+        return insertAccountEarnings(database, documentId, observedAt, parsed);
       default:
         throw new Error(`unknown_normalizer:${source.normalizer}`);
     }
@@ -177,7 +193,9 @@ export async function fetchSource(source, config, fetchImpl = globalThis.fetch) 
   const observedAt = new Date();
   const headers = { Accept: "application/json", "User-Agent": "vast-observatory/1" };
   if (source.authenticated) headers.Authorization = `Bearer ${config.apiKey}`;
-  const response = await fetchImpl(source.url, { method: "GET", headers, signal: AbortSignal.timeout(config.requestTimeoutMs) });
+  const timeoutSignal = AbortSignal.timeout(config.requestTimeoutMs);
+  const signal = config.signal ? AbortSignal.any([timeoutSignal, config.signal]) : timeoutSignal;
+  const response = await fetchImpl(source.url, { method: "GET", headers, signal });
   const body = Buffer.from(await response.arrayBuffer());
   const parsedTimestamp = sourceTimestampFromBody(body);
   return {
@@ -202,7 +220,8 @@ export async function runCliSource(source, config, execFileImpl = execFileAsync,
     encoding: "buffer",
     maxBuffer: 128 * 1024 * 1024,
     timeout: config.cliTimeoutMs,
-    env: { ...process.env, HOME: config.home }
+    signal: config.signal,
+    env: { ...process.env, HOME: config.home, VAST_API_KEY: config.apiKey }
   });
   const body = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout || "");
   return {
@@ -221,9 +240,9 @@ export async function runCliSource(source, config, execFileImpl = execFileAsync,
   };
 }
 
-export function sourceContractSummary(now = new Date()) {
+export function sourceContractSummary(now = new Date(), version = SOURCE_CONTRACT_VERSION) {
   return {
-    version: SOURCE_CONTRACT_VERSION,
+    version,
     http: HTTP_SOURCES.map(({ name, url, authenticated }) => ({ name, url, authenticated: Boolean(authenticated) })),
     account_cli: accountSourceContract(now).map(({ name, args }) => ({ name, argv: args.slice(0, 2) }))
   };

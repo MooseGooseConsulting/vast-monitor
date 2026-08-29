@@ -55,10 +55,12 @@ test("CLI source execution passes an argv array without a shell", async () => {
     return { stdout: Buffer.from("[]"), stderr: Buffer.alloc(0) };
   };
   const source = accountSourceContract(new Date("2026-08-29T12:00:00Z"))[1];
-  const result = await runCliSource(source, { vastCliPath: "/usr/local/bin/vast", cliTimeoutMs: 1000, home: "/home/node" }, execFileImpl, () => new Date("2026-08-29T12:00:00Z"));
+  const result = await runCliSource(source, { vastCliPath: "/usr/local/bin/vast", cliTimeoutMs: 1000, home: "/home/node", apiKey: "not-logged" }, execFileImpl, () => new Date("2026-08-29T12:00:00Z"));
   assert.deepEqual(calls[0].args, ["show", "instances", "--raw"]);
   assert.equal(calls[0].options.shell, undefined);
+  assert.equal(calls[0].options.env.VAST_API_KEY, "not-logged");
   assert.equal(result.requestMetadata.argv.join(" "), "show instances --raw");
+  assert.equal(JSON.stringify(result.requestMetadata).includes("not-logged"), false);
 });
 
 test("normalizers preserve source payloads while exposing query fields", () => {
@@ -85,12 +87,42 @@ test("normalizers preserve source payloads while exposing query fields", () => {
 });
 
 test("current rental views use the latest complete account documents and surface host counter disagreement", () => {
-  const migration = fs.readFileSync(new URL("../migrations/observatory-0002.sql", import.meta.url), "utf8");
-  assert.match(migration, /WHERE source_name = 'vast-account-machines'[\s\S]*ORDER BY observed_at DESC, id DESC[\s\S]*LIMIT 1/);
-  assert.match(migration, /WHERE source_name = 'vast-account-instances'[\s\S]*ORDER BY observed_at DESC, id DESC[\s\S]*LIMIT 1/);
-  assert.match(migration, /FULL OUTER JOIN active_self/);
-  assert.match(migration, /host_count_below_self/);
-  assert.match(migration, /current_rentals_running,0\)<=coalesce\(s\.self_instance_count,0\) THEN 'self'/);
+  const currentViews = fs.readFileSync(new URL("../migrations/observatory-0003.sql", import.meta.url), "utf8");
+  const classification = fs.readFileSync(new URL("../migrations/observatory-0002.sql", import.meta.url), "utf8");
+  assert.match(currentViews, /WHERE r\.status = 'complete'/);
+  assert.equal((currentViews.match(/latest_account_run/g) || []).length >= 4, true);
+  assert.match(currentViews, /d\.source_name='vast-account-machines'/);
+  assert.match(currentViews, /d\.source_name='vast-account-instances'/);
+  assert.match(classification, /FULL OUTER JOIN active_self/);
+  assert.match(classification, /host_count_below_self/);
+  assert.match(classification, /current_rentals_running,0\)<=coalesce\(s\.self_instance_count,0\) THEN 'self'/);
+});
+
+test("source contract summary uses the configured contract version", () => {
+  assert.equal(sourceContractSummary(new Date("2026-08-29T12:00:00Z"), "custom-v2").version, "custom-v2");
+});
+
+test("normalization batches roll back atomically when a later batch fails", async () => {
+  const statements = [];
+  let inserts = 0;
+  const client = {
+    async query(sql) {
+      statements.push(sql);
+      if (sql.startsWith("INSERT INTO market.machine_observation") && ++inserts === 2) throw new Error("second_batch_failed");
+      return { rowCount: 1 };
+    },
+    release() { statements.push("RELEASE"); }
+  };
+  const collector = new ObservatoryCollector({}, { pool: { async connect() { return client; } } });
+  const rows = Array.from({ length: 401 }, (_, machine_id) => ({ machine_id }));
+  await assert.rejects(
+    collector.normalizeDocument(1, { name: "500farm-machines", normalizer: "machines" }, Buffer.from(JSON.stringify({ offers: rows })), new Date()),
+    /second_batch_failed/
+  );
+  assert.equal(statements[0], "BEGIN");
+  assert.equal(statements.includes("COMMIT"), false);
+  assert.equal(statements.at(-2), "ROLLBACK");
+  assert.equal(statements.at(-1), "RELEASE");
 });
 
 test("a complete collection stores every raw source and normalized surface", async () => {
@@ -102,6 +134,9 @@ test("a complete collection stores every raw source and normalized surface", asy
       if (sql.startsWith("INSERT INTO ops.collection_run")) return { rows: [{ id: 1 }], rowCount: 1 };
       if (sql.startsWith("INSERT INTO raw.source_document")) return { rows: [{ id: documentId++ }], rowCount: 1 };
       return { rows: [], rowCount: 1 };
+    },
+    async connect() {
+      return { query: this.query.bind(this), release() {} };
     }
   };
   const fetchImpl = async (url) => {

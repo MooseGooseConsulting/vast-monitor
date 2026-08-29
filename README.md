@@ -47,7 +47,7 @@ observations from:
 
 Apply the owner migration first with
 `OWNER_DATABASE_URL=... npm run migrate:observatory`. Runtime accepts only the writer
-`DATABASE_URL`; the API key can be supplied as `VAST_API_KEY` or by mounting
+`DATABASE_URL` or `DATABASE_URL_FILE`; the API key can be supplied as `VAST_API_KEY` or by mounting
 `VAST_API_KEY_PATH`. `npm run start:observatory -- --once` performs one immediately
 verifiable run. The collector records its source-contract version, Git revision, image
 digest, raw response hashes, source-declared counts, normalized rows, and failures in the

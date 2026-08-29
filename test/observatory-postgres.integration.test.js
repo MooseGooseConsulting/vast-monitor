@@ -17,12 +17,16 @@ test("PostgreSQL current-state views handle replacement, gaps, repricing, and re
     assert.deepEqual(await currentClassification(client), { party_class: "self", self_instance_count: 1, self_rental_types: ["bid"], host_count_below_self: false, listed_gpu_cost: "0.75" });
 
     const run2 = await insertRun(client, "2040-01-01T00:05:00Z", "complete");
+    const machineReplacement = await insertDocument(client, run2, "vast-account-machines", "2040-01-01T00:05:01Z");
+    await insertMachine(client, machineReplacement, "2040-01-01T00:05:01Z", 1, 0.75);
     const instances2 = await insertDocument(client, run2, "vast-account-instances", "2040-01-01T00:05:02Z");
     await insertInstance(client, instances2, "contract-b", "on_demand", "2040-01-01T00:05:02Z");
     assert.deepEqual((await client.query("SELECT contract_id FROM derived.current_account_instance")).rows.map((row) => row.contract_id), ["contract-b"]);
     assert.deepEqual(await currentClassification(client), { party_class: "self", self_instance_count: 1, self_rental_types: ["on_demand"], host_count_below_self: false, listed_gpu_cost: "0.75" });
 
     const run3 = await insertRun(client, "2040-01-01T00:10:00Z", "complete");
+    const machineExternal = await insertDocument(client, run3, "vast-account-machines", "2040-01-01T00:10:01Z");
+    await insertMachine(client, machineExternal, "2040-01-01T00:10:01Z", 1, 0.75);
     await insertDocument(client, run3, "vast-account-instances", "2040-01-01T00:10:02Z");
     assert.deepEqual(await currentClassification(client), { party_class: "external", self_instance_count: 0, self_rental_types: [], host_count_below_self: false, listed_gpu_cost: "0.75" });
 
@@ -33,12 +37,18 @@ test("PostgreSQL current-state views handle replacement, gaps, repricing, and re
     await insertInstance(client, instances4, "contract-c", "unknown", "2040-01-01T00:15:02Z");
     assert.deepEqual(await currentClassification(client), { party_class: "self", self_instance_count: 1, self_rental_types: ["unknown"], host_count_below_self: true, listed_gpu_cost: "1.25" });
 
-    await insertRun(client, "2040-01-01T00:20:00Z", "failed");
+    const failedRun = await insertRun(client, "2040-01-01T00:20:00Z", "failed");
+    const failedMachine = await insertDocument(client, failedRun, "vast-account-machines", "2040-01-01T00:20:01Z");
+    await insertMachine(client, failedMachine, "2040-01-01T00:20:01Z", 1, 9.99);
+    await insertDocument(client, failedRun, "vast-account-instances", "2040-01-01T00:20:02Z");
     assert.deepEqual((await client.query("SELECT contract_id FROM derived.current_account_instance")).rows.map((row) => row.contract_id), ["contract-c"]);
+    assert.equal((await currentClassification(client)).listed_gpu_cost, "1.25");
 
     const run6 = await insertRun(client, "2040-01-01T00:25:00Z", "complete");
     const machine3 = await insertDocument(client, run6, "vast-account-machines", "2040-01-01T00:25:01Z");
     await insertMachine(client, machine3, "2040-01-01T00:25:01Z", 0, 1.50);
+    const instances6 = await insertDocument(client, run6, "vast-account-instances", "2040-01-01T00:25:01.500Z");
+    await insertInstance(client, instances6, "contract-c", "unknown", "2040-01-01T00:25:01.500Z");
     assert.equal((await currentClassification(client)).listed_gpu_cost, "1.5");
 
     const earnings = await insertDocument(client, run6, "vast-account-earnings", "2040-01-01T00:25:02Z");
