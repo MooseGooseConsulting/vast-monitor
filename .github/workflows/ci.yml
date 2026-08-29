@@ -35,6 +35,7 @@ jobs:
           CREATE ROLE vast_observatory_owner NOLOGIN;
           CREATE ROLE vast_observatory_writer NOLOGIN;
           CREATE ROLE vast_observatory_reader NOLOGIN;
+          ALTER DATABASE raw_market_test OWNER TO vast_observatory_owner;
           SQL
         env:
           PGPASSWORD: postgres
