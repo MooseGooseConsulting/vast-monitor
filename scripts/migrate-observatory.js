@@ -12,7 +12,7 @@ try {
   await client.query("SELECT pg_advisory_lock(hashtext('vast-observatory-migrations'))");
   await client.query("CREATE SCHEMA IF NOT EXISTS ops AUTHORIZATION vast_observatory_owner");
   await client.query("CREATE TABLE IF NOT EXISTS ops.schema_migration (version integer PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT clock_timestamp())");
-  for (const version of [1]) {
+  for (const version of [1, 2]) {
     const prior = await client.query("SELECT 1 FROM ops.schema_migration WHERE version=$1", [version]);
     if (prior.rowCount) continue;
     const sql = await fs.readFile(path.join(root, "migrations", `observatory-${String(version).padStart(4, "0")}.sql`), "utf8");
@@ -31,4 +31,3 @@ try {
   await client.query("SELECT pg_advisory_unlock(hashtext('vast-observatory-migrations'))").catch(() => {});
   await client.end();
 }
-

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import test from "node:test";
 import {
   HTTP_SOURCES,
@@ -81,6 +82,15 @@ test("normalizers preserve source payloads while exposing query fields", () => {
   assert.equal(normalizedInstance[1], 9);
   assert.equal(normalizedInstance[10], "bid");
   assert.equal(normalizedInstance.at(-1), instance);
+});
+
+test("current rental views use the latest complete account documents and surface host counter disagreement", () => {
+  const migration = fs.readFileSync(new URL("../migrations/observatory-0002.sql", import.meta.url), "utf8");
+  assert.match(migration, /WHERE source_name = 'vast-account-machines'[\s\S]*ORDER BY observed_at DESC, id DESC[\s\S]*LIMIT 1/);
+  assert.match(migration, /WHERE source_name = 'vast-account-instances'[\s\S]*ORDER BY observed_at DESC, id DESC[\s\S]*LIMIT 1/);
+  assert.match(migration, /FULL OUTER JOIN active_self/);
+  assert.match(migration, /host_count_below_self/);
+  assert.match(migration, /current_rentals_running,0\)<=coalesce\(s\.self_instance_count,0\) THEN 'self'/);
 });
 
 test("a complete collection stores every raw source and normalized surface", async () => {
