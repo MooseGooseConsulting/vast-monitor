@@ -29,13 +29,30 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci
+      - name: Create observatory migration roles
+        run: |
+          psql -h 127.0.0.1 -U postgres -d raw_market_test -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE vast_observatory_owner NOLOGIN;
+          CREATE ROLE vast_observatory_writer NOLOGIN;
+          CREATE ROLE vast_observatory_reader NOLOGIN;
+          SQL
+        env:
+          PGPASSWORD: postgres
+      - run: npm run migrate:observatory
+        env:
+          OWNER_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/raw_market_test
       - run: npm test
         env:
           RAW_MARKET_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/raw_market_test
-      - run: docker build -t vast-monitor:test .
+      - run: >-
+          docker build
+          --build-arg OCI_REVISION=${{ github.sha }}
+          --build-arg OCI_VERSION=sha-${{ github.sha }}
+          --build-arg OCI_CREATED=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          -t vast-monitor:test .
 
   publish:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/master') || github.event_name == 'workflow_dispatch'
     needs: test
     runs-on: ubuntu-latest
     steps:
@@ -51,4 +68,8 @@ jobs:
           context: .
           push: true
           tags: ghcr.io/moosegooseconsulting/vast-monitor:sha-${{ github.sha }}
+          build-args: |
+            OCI_REVISION=${{ github.sha }}
+            OCI_VERSION=sha-${{ github.sha }}
+            OCI_CREATED=${{ github.event.repository.updated_at }}
       - run: echo "VAST_MONITOR_IMAGE=ghcr.io/moosegooseconsulting/vast-monitor@${{ steps.build.outputs.digest }}" >> "$GITHUB_STEP_SUMMARY"

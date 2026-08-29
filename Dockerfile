@@ -1,6 +1,17 @@
 ARG NODE_IMAGE=node:22.22.2-bookworm-slim@sha256:9f6d5975c7dca860947d3915877f85607946403fc55349f39b4bc3688448bb6e
 FROM ${NODE_IMAGE}
 
+ARG OCI_SOURCE=https://github.com/MooseGooseConsulting/vast-monitor
+ARG OCI_REVISION=unknown
+ARG OCI_VERSION=dev
+ARG OCI_CREATED=unknown
+LABEL org.opencontainers.image.source="${OCI_SOURCE}" \
+      org.opencontainers.image.revision="${OCI_REVISION}" \
+      org.opencontainers.image.version="${OCI_VERSION}" \
+      org.opencontainers.image.created="${OCI_CREATED}" \
+      org.opencontainers.image.description="Vast community dashboard and passive Vast market/account observatory"
+ENV OCI_REVISION="${OCI_REVISION}" OCI_VERSION="${OCI_VERSION}"
+
 # The community monitor invokes the official Vast Python CLI.  Keep the exact
 # script revision and its digest in the image so a rebuilt monitor still has
 # the same read-only query surface as the existing deployment.

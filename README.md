@@ -30,6 +30,30 @@ writer-DSN secret, rather than creating a new history volume. Release images
 are published by GitHub Actions and the workflow summary prints the immutable
 `VAST_MONITOR_IMAGE=ghcr.io/...@sha256:...` value to use for that override.
 
+## Vast observatory collector
+
+The image also contains a standalone passive collector, launched with
+`npm run start:observatory`. It does not start the dashboard, poll SQLite, inspect
+renter processes, or call any Vast mutation command. Its authenticated CLI surface is
+fixed to `show machines --raw`, `show instances --raw`, and `show earnings --raw`.
+
+Each five-minute run archives the returned bytes and writes queryable PostgreSQL
+observations from:
+
+- the official Vast GPU catalog and all-GPU current market metrics;
+- the complete response published by each 500.farm `/machines`, `/offers`, `/hosts`,
+  `/gpu-stats`, and `/gpu-stats/v2` feed; and
+- the authenticated account machine, instance, and earnings reads above.
+
+Apply the owner migration first with
+`OWNER_DATABASE_URL=... npm run migrate:observatory`. Runtime accepts only the writer
+`DATABASE_URL`; the API key can be supplied as `VAST_API_KEY` or by mounting
+`VAST_API_KEY_PATH`. `npm run start:observatory -- --once` performs one immediately
+verifiable run. The collector records its source-contract version, Git revision, image
+digest, raw response hashes, source-declared counts, normalized rows, and failures in the
+fresh `vast_observatory` database. Its schemas are `ops`, `raw`, `market`, `host`, and
+`derived`.
+
 ## Features
 
 - Polls `vast show machines --raw` on a schedule

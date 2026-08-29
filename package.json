@@ -7,7 +7,9 @@
   "scripts": {
     "start": "node src/index.js",
     "test": "node --test",
-    "migrate:raw-market": "node scripts/migrate-raw-market.js"
+    "migrate:raw-market": "node scripts/migrate-raw-market.js",
+    "migrate:observatory": "node scripts/migrate-observatory.js",
+    "start:observatory": "node scripts/run-observatory.js"
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0",
