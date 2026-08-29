@@ -47,6 +47,7 @@ try {
   if (once) {
     const result = await collector.collect();
     console.log(JSON.stringify(result));
+    if (result.status === "failed") process.exitCode = 1;
   } else {
     while (!stopped) {
       const delay = alignedDelay(pollIntervalMs);

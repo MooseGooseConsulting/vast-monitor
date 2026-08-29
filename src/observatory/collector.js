@@ -39,6 +39,15 @@ export class ObservatoryCollector {
   async collect() {
     const startedAt = this.now();
     const pollSlot = alignedSlot(startedAt, this.config.pollIntervalMs);
+    await this.pool.query(
+      `UPDATE ops.collection_run
+          SET status='failed', completed_at=coalesce(completed_at,clock_timestamp()),
+              error_count=greatest(error_count,1),
+              error_message=coalesce(error_message,'collector_abandoned_after_restart')
+        WHERE collector_name=$1 AND status='running'
+          AND started_at < clock_timestamp() - interval '30 minutes'`,
+      [this.config.collectorName]
+    );
     const run = await this.pool.query(
       `INSERT INTO ops.collection_run
          (collector_name, poll_slot, status, contract_version, collector_revision, image_digest, source_contract)
@@ -62,6 +71,7 @@ export class ObservatoryCollector {
     let responseBytes = 0;
 
     for (const source of HTTP_SOURCES) {
+      if (this.config.signal?.aborted) break;
       try {
         const response = await fetchSource(source, this.config, this.fetchImpl);
         const documentId = await this.persistDocument(runId, source, response);
@@ -78,6 +88,7 @@ export class ObservatoryCollector {
     }
 
     for (const source of accountSourceContract(startedAt)) {
+      if (this.config.signal?.aborted) break;
       try {
         const response = await runCliSource(source, this.config, this.execFileImpl, this.now);
         const documentId = await this.persistDocument(runId, source, response);
@@ -88,6 +99,13 @@ export class ObservatoryCollector {
         failures.push(await this.persistFailure(runId, source.name, error));
       }
       if (this.config.signal?.aborted) break;
+    }
+
+    if (this.config.signal?.aborted) {
+      const reason = this.config.signal.reason instanceof Error
+        ? this.config.signal.reason
+        : new Error("collector_aborted");
+      failures.push(await this.persistFailure(runId, "collector-abort", reason));
     }
 
     const status = failures.length ? "failed" : "complete";
@@ -324,6 +342,7 @@ async function insertAccountInstances(pool, documentId, observedAt, rows) {
 }
 
 async function insertAccountEarnings(pool, documentId, observedAt, payload) {
+  validateEarningsPayload(payload);
   const rows = [];
   for (const [scope, entries] of [["day", payload?.per_day], ["machine", payload?.per_machine]]) {
     for (const entry of Array.isArray(entries) ? entries : []) rows.push({ scope, entry });
@@ -334,6 +353,22 @@ async function insertAccountEarnings(pool, documentId, observedAt, payload) {
     `INSERT INTO host.earnings_observation
       (document_id,row_ordinal,observed_at,scope,day,machine_id,gpu_earn,storage_earn,bandwidth_up_earn,bandwidth_down_earn,sla_earn,total,payload) VALUES`,
     rows.map(({ scope, entry }, index) => [documentId, index + 1, observedAt, scope, date(entry.day), int(entry.machine_id), numeric(entry.gpu_earn ?? entry.total_gpu), numeric(entry.sto_earn ?? entry.total_stor), numeric(entry.bwu_earn ?? entry.total_bwu), numeric(entry.bwd_earn ?? entry.total_bwd), numeric(entry.sla_earn ?? entry.total_sla), earningsTotal(entry), entry]), 13);
+}
+
+function validateEarningsPayload(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error("unexpected_earnings_shape");
+  let recognized = false;
+  for (const key of ["per_day", "per_machine"]) {
+    if (!Object.hasOwn(payload, key)) continue;
+    recognized = true;
+    if (!Array.isArray(payload[key])) throw new Error("unexpected_earnings_shape");
+  }
+  for (const key of ["summary", "current"]) {
+    if (!Object.hasOwn(payload, key)) continue;
+    recognized = true;
+    if (!payload[key] || typeof payload[key] !== "object" || Array.isArray(payload[key])) throw new Error("unexpected_earnings_shape");
+  }
+  if (!recognized) throw new Error("unexpected_earnings_shape");
 }
 
 async function batchInsert(pool, prefix, rows, columnCount, batchSize = 400) {

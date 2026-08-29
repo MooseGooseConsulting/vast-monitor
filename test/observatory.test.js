@@ -148,6 +148,73 @@ test("unrecognized GPU metric payloads fail normalization instead of producing e
   assert.equal(statements.includes("COMMIT"), false);
 });
 
+test("earnings normalization rejects unknown shapes and accepts recognized empty sections", async () => {
+  const statements = [];
+  const client = {
+    async query(sql) { statements.push(sql); return { rowCount: 0 }; },
+    release() {}
+  };
+  const collector = new ObservatoryCollector({}, { pool: { async connect() { return client; } } });
+  await assert.rejects(
+    collector.normalizeDocument(1, { name: "earnings", normalizer: "account-earnings" }, Buffer.from('{"error":"schema changed"}'), new Date()),
+    /unexpected_earnings_shape/
+  );
+  await collector.normalizeDocument(2, { name: "earnings", normalizer: "account-earnings" }, Buffer.from('{"per_day":[],"per_machine":[]}'), new Date());
+  assert.equal(statements.filter((sql) => sql === "ROLLBACK").length, 1);
+  assert.equal(statements.filter((sql) => sql === "COMMIT").length, 1);
+});
+
+test("an aborted collection is failed and cannot become current", async () => {
+  const queries = [];
+  const abortController = new AbortController();
+  abortController.abort(new Error("SIGTERM"));
+  const pool = {
+    async query(sql, values = []) {
+      queries.push({ sql, values });
+      if (sql.startsWith("INSERT INTO ops.collection_run")) return { rows: [{ id: 7 }], rowCount: 1 };
+      return { rows: [], rowCount: 1 };
+    }
+  };
+  const collector = new ObservatoryCollector({
+    collectorName: "test", contractVersion: "test-v1", collectorRevision: "abc",
+    pollIntervalMs: 300000, signal: abortController.signal
+  }, { pool, now: () => new Date("2026-08-29T12:01:00Z"), logger: { error() {} } });
+  const result = await collector.collect();
+  assert.equal(result.status, "failed");
+  assert.equal(result.documents, 0);
+  assert.equal(result.failures.length, 1);
+  assert.ok(queries.some(({ sql }) => sql.startsWith("INSERT INTO ops.source_failure")));
+  assert.ok(queries.some(({ sql, values }) => sql.startsWith("UPDATE ops.collection_run") && values[0] === "failed"));
+});
+
+test("collector reconciles abandoned running rows before claiming a slot", async () => {
+  const queries = [];
+  const pool = {
+    async query(sql, values = []) {
+      queries.push({ sql, values });
+      if (sql.startsWith("INSERT INTO ops.collection_run")) return { rows: [], rowCount: 0 };
+      return { rows: [], rowCount: 0 };
+    }
+  };
+  const collector = new ObservatoryCollector({ collectorName: "test", pollIntervalMs: 300000 }, {
+    pool, now: () => new Date("2026-08-29T12:01:00Z")
+  });
+  await collector.collect();
+  assert.match(queries[0].sql, /collector_abandoned_after_restart/);
+  assert.match(queries[0].sql, /interval '30 minutes'/);
+  assert.equal(queries[0].values[0], "test");
+});
+
+test("environment template and one-shot runner expose the observatory contract", () => {
+  const template = fs.readFileSync(new URL("../.env.example", import.meta.url), "utf8");
+  const runner = fs.readFileSync(new URL("../scripts/run-observatory.js", import.meta.url), "utf8");
+  for (const name of ["OBSERVATORY_COLLECTOR_NAME", "OBSERVATORY_CONTRACT_VERSION", "OBSERVATORY_POLL_INTERVAL_MS", "OBSERVATORY_REQUEST_TIMEOUT_MS", "OBSERVATORY_CLI_TIMEOUT_MS", "OCI_REVISION", "IMAGE_DIGEST"]) {
+    assert.match(template, new RegExp(`^${name}=`, "m"));
+  }
+  assert.match(runner, /result\.status === "failed"/);
+  assert.match(runner, /process\.exitCode = 1/);
+});
+
 test("a complete collection stores every raw source and normalized surface", async () => {
   const queries = [];
   let documentId = 10;
